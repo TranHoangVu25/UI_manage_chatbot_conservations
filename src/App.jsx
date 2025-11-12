@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // <-- Thêm useEffect
+import React, { useState, useEffect, useCallback } from 'react'; // <-- Thêm useCallback
 import {
   MessagesSquare,
   LineChart,
@@ -132,12 +132,23 @@ const ConversationsChart = ({ dailyStats, totalConversations }) => {
       {/* Phần "biểu đồ" hiển thị dữ liệu (ĐÃ CẬP NHẬT) */}
       <div className="flex justify-around items-center text-center mb-6 px-4">
         {/* Loop qua 'dailyStats' từ API */}
-        {dailyStats && dailyStats.map((item) => (
-          <div key={item.date} className="flex flex-col items-center space-y-1">
-            <span className={`text-sm font-medium text-gray-700`}>{getDayAbbreviation(item.dayOfWeek)}</span>
-            <span className="text-lg font-bold text-gray-800">{item.count}</span>
-          </div>
-        ))}
+        {dailyStats && dailyStats.map((item) => {
+          // === CẬP NHẬT: THÊM MÀU ===
+          const dayAbbr = getDayAbbreviation(item.dayOfWeek);
+          const legendItem = legendData.find(l => l.day === dayAbbr);
+          // Chuyển 'bg-blue-500' thành 'text-blue-500'
+          const colorClass = legendItem 
+            ? legendItem.color.replace('bg-', 'text-') 
+            : 'text-gray-700';
+          // =========================
+
+          return (
+            <div key={item.date} className="flex flex-col items-center space-y-1">
+              <span className={`text-sm font-medium ${colorClass}`}>{dayAbbr}</span>
+              <span className="text-lg font-bold text-gray-800">{item.count}</span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Đường kẻ ngang */}
@@ -276,27 +287,24 @@ const ConversationsFilterTabs = () => {
 // === PHẦN 4: COMPONENT BẢNG HỘI THOẠI (ĐÃ CẬP NHẬT) ===
 // ===============================================
 
-// Component nhỏ cho thẻ "Quality" (ĐÃ CẬP NHẬT)
-// Nhận 'status' từ API (giả định 1=Pending, 2=Potential, 0=Spam)
-const QualityTag = ({ status }) => {
+// Component nhỏ cho thẻ "Status" (ĐÃ CẬP NHẬT)
+// Nhận 'status' từ API (1=undefine, 2=potential, 3=spam)
+const StatusTag = ({ status }) => {
   let colors = '';
   let text = '';
   switch (status) {
-    case 3: // Giả định 0 là Spam
+    case 2: // Potential
+      colors = 'bg-green-100 text-green-700';
+      text = 'Potential';
+      break;
+    case 3: // Spam
       colors = 'bg-red-100 text-red-700';
       text = 'Spam';
       break;
-    case 2: // Giả định 1 là Pending
-      colors = 'bg-blue-100 text-blue-700';
-      text = 'Potential';
-      break;
-    // case 1: // Giả định 2 là Potential
-    //   colors = 'bg-green-100 text-green-700';
-    //   text = 'Unde'; // Hoặc 'Good'
-    //   break;
+    case 1: // Undefine
     default:
       colors = 'bg-gray-100 text-gray-700';
-      text = 'N/A';
+      text = 'Undefined'; // (1 = undefine)
   }
   return (
     <span className={`px-3 py-1 text-xs font-medium rounded-full ${colors}`}>
@@ -305,17 +313,17 @@ const QualityTag = ({ status }) => {
   );
 };
 
-// Component nhỏ cho thẻ "Status" (ĐÃ CẬP NHẬT)
-// Nhận 'analyzed' từ API (1=Analyzed, 0=Pending)
-const StatusTag = ({ analyzed }) => {
+// Component nhỏ cho thẻ "Analyze" (ĐÃ CẬP NHẬT)
+// Nhận 'analyzed' từ API (1=pending, 2=analyzed)
+const AnalyzeTag = ({ analyzed }) => {
   let colors = '';
   let text = '';
   switch (analyzed) {
-    case 2:
+    case 2: // Analyzed
       colors = 'bg-green-100 text-green-700';
       text = 'Analyzed';
       break;
-    case 1:
+    case 1: // Pending
     default:
       colors = 'bg-yellow-100 text-yellow-700';
       text = 'Pending';
@@ -353,6 +361,7 @@ const ConversationsTable = ({ conversations, onViewClick, onAnalyzeClick, onDele
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+            {/* CẬP NHẬT: Đổi tên cột */}
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer ID</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -366,13 +375,18 @@ const ConversationsTable = ({ conversations, onViewClick, onAnalyzeClick, onDele
           {conversations && conversations.map((row) => (
             <tr key={row.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-xs">{row.id}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{row.userId}</td>
+              {/* CẬP NHẬT: Logic "Guest" */}
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                {row.userId ? `${row.userId}` : 'Guest'}
+              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">N/A</td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <QualityTag status={row.status} />
+                {/* Dùng StatusTag (logic 1,2,3) */}
+                <StatusTag status={row.status} />
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <StatusTag analyzed={row.analyzed} />
+                {/* Dùng AnalyzeTag (logic 1,2) */}
+                <AnalyzeTag analyzed={row.analyzed} />
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                 {/* Dùng hàm formatDateTime */}
@@ -386,12 +400,14 @@ const ConversationsTable = ({ conversations, onViewClick, onAnalyzeClick, onDele
                   >
                     <Eye size={16} className="mr-1" /> View
                   </button>
+                  {/* CẬP NHẬT: Bỏ "..." */}
                   <button 
                     onClick={() => onAnalyzeClick(row)} 
                     className="flex items-center text-green-500 hover:text-green-700"
                   >
                     <BarChart2 size={16} className="mr-1" /> Analyze
                   </button>
+                  {/* CẬP NHẬT: Bỏ "..." */}
                   <button 
                     onClick={() => onDeleteClick(row)} 
                     className="flex items-center text-red-500 hover:text-red-700"
@@ -456,8 +472,8 @@ const ConversationDetailModal = ({ conversation, onClose }) => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center space-x-3">
               <AlertTriangle className="text-yellow-500" size={20} />
               <p className="text-sm text-yellow-700">
-                {/* Kiểm tra 'analyzed' từ API */}
-                {conversation.analyzed === 1
+                {/* Cập nhật logic: (1=pending, 2=analyzed) */}
+                {conversation.analyzed === 2
                   ? 'Conversation has been analyzed.' 
                   : 'Not analyzed yet. Click "Analyze" to analyze the conversation.'
                 }
@@ -664,44 +680,51 @@ export default function App() {
     message: ''
   });
 
-  // === HÀM GỌI API (MỚI) ===
-  useEffect(() => {
-    // Dùng 'async' bên trong 'useEffect'
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // === SỬA LỖI: Thêm URL đầy đủ ===
-        // Giả định backend chạy trên localhost:8080
-        // Nếu backend của bạn chạy ở cổng khác, hãy thay đổi ở đây
-        const response = await fetch('http://localhost:8083/api/v1/overview'); 
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+  // === HÀM GỌI API (ĐÃ DI CHUYỂN RA NGOÀI) ===
+  // (Chúng ta di chuyển hàm này ra ngoài useEffect để có thể gọi lại)
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Giả định backend chạy trên localhost:8080
+      // SỬA LỖI: Thêm các tùy chọn 'mode' và 'method' rõ ràng
+      const response = await fetch('http://localhost:8083/api/v1/overview', {
+        method: 'GET',
+        mode: 'cors', // Thêm 'mode: cors'
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
-        
-        const data = await response.json();
-        
-        if (data.code === 0 && data.result) {
-          setOverviewData(data.result); // Lưu trữ { stats, conversations }
-          setError(null);
-        } else {
-          throw new Error('Invalid data structure from API.');
-        }
-
-      } catch (err) {
-        console.error("Failed to fetch data:", err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      }); 
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
+      
+      const data = await response.json();
+      
+      if (data.code === 0 && data.result) {
+        setOverviewData(data.result); // Lưu trữ { stats, conversations }
+        setError(null);
+      } else {
+        throw new Error('Invalid data structure from API.');
+      }
 
+    } catch (err) {
+      console.error("Failed to fetch data:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []); // Mảng rỗng '[]' nghĩa là hàm này không thay đổi
+
+  // === useEffect (CHỈ GỌI fetchData) ===
+  useEffect(() => {
     fetchData();
-  }, []); // Mảng rỗng '[]' nghĩa là chỉ chạy 1 lần khi component được tải
+  }, [fetchData]); // Mảng rỗng '[]' nghĩa là chỉ chạy 1 lần khi component được tải
 
   
-  // === CÁC HÀM XỬ LÝ (Handlers) CHO MODALS (Không đổi) ===
+  // === CÁC HÀM XỬ LÝ (Handlers) CHO MODALS ===
   const handleViewClick = (conversationData) => {
     setSelectedConversation(conversationData);
   };
@@ -726,18 +749,64 @@ export default function App() {
       message: `Are you sure you want to delete conversation ID: ${conversation.id}? This action cannot be undone.`
     });
   };
-  const handleCloseConfirmation = () => {
+  const handleCloseConfirmation = useCallback(() => { // (Thêm useCallback)
     setConfirmationState({ isOpen: false, type: null, data: null, title: '', message: '' });
-  };
-  const handleConfirmAction = () => {
+  }, []);
+
+  // === HÀM XÁC NHẬN (ĐÃ CẬP NHẬT ĐỂ GỌI API) ===
+  const handleConfirmAction = useCallback(async () => {
     const { type, data } = confirmationState;
+    
+    // Đóng modal ngay lập tức
+    handleCloseConfirmation();
+
     if (type === 'analyze') {
       console.log("Analyzing conversation:", data.id);
+      try {
+        // GỌI API ANALYZE
+        const response = await fetch(`http://localhost:8083/api/v1/analyze/${data.id}`, {
+          method: 'POST', // Theo @PostMapping
+          mode: 'cors', // Thêm 'mode: cors'
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Analyze API failed! status: ${response.status}`);
+        }
+        
+        // Nếu thành công, gọi lại 'fetchData' để làm mới toàn bộ dashboard
+        await fetchData();
+        
+      } catch (err) {
+        console.error("Failed to analyze conversation:", err);
+        // (Trong tương lai, bạn có thể hiển thị thông báo lỗi cho người dùng ở đây)
+      }
+      
     } else if (type === 'delete') {
       console.log("Deleting conversation:", data.id);
+      
+      // === CẬP NHẬT: THÊM LOGIC GỌI API DELETE ===
+      try {
+        const response = await fetch(`http://localhost:8083/api/v1/delete/${data.id}`, {
+          method: 'DELETE', // Theo @DeleteMapping
+          mode: 'cors'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Delete API failed! status: ${response.status}`);
+        }
+
+        // Nếu thành công, gọi lại 'fetchData' để làm mới
+        await fetchData();
+
+      } catch (err) {
+        console.error("Failed to delete conversation:", err);
+      }
+      // ==========================================
     }
-    handleCloseConfirmation();
-  };
+  }, [confirmationState, fetchData, handleCloseConfirmation]); // Thêm dependencies
 
   // === XỬ LÝ TRẠNG THÁI LOADING VÀ ERROR (MỚI) ===
   if (loading) {
