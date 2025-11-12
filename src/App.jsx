@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react'; // <-- Thêm useRef
 import {
   MessagesSquare,
   LineChart,
@@ -26,7 +26,7 @@ import {
   User,
   ChevronUp,
   ChevronDown,
-  Info // Icon mới cho thông báo lỗi
+  Info // Icon cho thông báo lỗi
 } from 'lucide-react';
 
 // ===============================================
@@ -222,9 +222,10 @@ const ConversationsChart = ({ dailyStats = [], totalConversations = 0 }) => {
 };
 
 // ===============================================
-// === PHẦN 3: COMPONENT LỌC VÀ TABS ===
+// === PHẦN 3: COMPONENT LỌC VÀ TABS (ĐÃ CẬP NHẬT) ===
 // ===============================================
-const ConversationsFilterTabs = () => {
+// Cập nhật: Xóa prop 'onSearchClick'
+const ConversationsFilterTabs = ({ currentFilterValue, onFilterChange }) => {
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mt-6">
       
@@ -268,16 +269,19 @@ const ConversationsFilterTabs = () => {
           </div>
         </div>
 
+        {/* CẬP NHẬT: Bộ lọc Status */}
         <div className="flex items-center space-x-2">
-          <label htmlFor="leadQuality" className="text-sm font-medium text-gray-700">Lead Quality:</label>
+          <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700">Status:</label>
           <select 
-            id="leadQuality"
+            id="statusFilter"
             className="border border-gray-300 rounded-md p-2 text-sm bg-white"
+            value={currentFilterValue} // Nhận giá trị từ state
+            onChange={(e) => onFilterChange(Number(e.target.value))} // Cập nhật state (convert sang Number)
           >
-            <option>All</option>
-            <option>Good</option>
-            <option>OK</option>
-            <option>Spam</option>
+            <option value="0">All</option>
+            <option value="1">Undefined</option>
+            <option value="2">Potential</option>
+            <option value="3">Spam</option>
           </select>
         </div>
       </div>
@@ -293,7 +297,11 @@ const ConversationsFilterTabs = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
         </div>
 
-        <button className="flex items-center space-x-2 bg-yellow-400 hover:bg-yellow-500 text-white font-semibold px-4 py-2 rounded-md text-sm">
+        {/* Action Buttons */}
+        {/* CẬP NHẬT: Xóa onClick khỏi nút Search */}
+        <button 
+          className="flex items-center space-x-2 bg-yellow-400 hover:bg-yellow-500 text-white font-semibold px-4 py-2 rounded-md text-sm"
+        >
           <Search size={16} />
           <span>Search</span>
         </button>
@@ -310,6 +318,7 @@ const ConversationsFilterTabs = () => {
     </div>
   );
 };
+
 
 // ===============================================
 // === PHẦN 4: COMPONENT BẢNG HỘI THOẠI ===
@@ -683,7 +692,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, type })
 };
 
 // ===============================================
-// === PHẦN 7: COMPONENT THÔNG BÁO LỖI (MỚI) ===
+// === PHẦN 7: COMPONENT THÔNG BÁO LỖI ===
 // ===============================================
 const ErrorBanner = ({ message, onClose }) => {
   if (!message) return null;
@@ -717,8 +726,10 @@ export default function App() {
   const [error, setError] = useState(null);
   const [overviewData, setOverviewData] = useState(null); 
   
-  // === CẬP NHẬT: State mới cho thông báo lỗi ===
   const [showErrorBanner, setShowErrorBanner] = useState(true);
+
+  // === CẬP NHẬT: Thêm state cho bộ lọc ===
+  const [statusFilter, setStatusFilter] = useState(0); // 0 = All
 
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [confirmationState, setConfirmationState] = useState({
@@ -729,8 +740,11 @@ export default function App() {
     message: ''
   });
 
+  // === CẬP NHẬT: Thêm Ref để tránh vòng lặp vô tận ===
+  const isInitialMount = useRef(true);
+  // === HẾT CẬP NHẬT ===
+
   const fetchData = useCallback(async () => {
-    // Luôn reset thông báo lỗi khi fetch
     setShowErrorBanner(true); 
     setError(null);
     
@@ -761,10 +775,9 @@ export default function App() {
 
     } catch (err) {
       console.error("Failed to fetch data:", err);
-      // === CẬP NHẬT: Tải dữ liệu giả khi lỗi ===
       setError(err.message);
-      setOverviewData(getFakeData()); // <--- Tải dữ liệu giả
-      setShowErrorBanner(true); // Hiển thị thông báo
+      setOverviewData(getFakeData()); 
+      setShowErrorBanner(true); 
     } finally {
       setLoading(false);
     }
@@ -803,20 +816,85 @@ export default function App() {
     setConfirmationState({ isOpen: false, type: null, data: null, title: '', message: '' });
   }, []);
 
+  // === CẬP NHẬT: Đổi tên thành 'executeFilter' (vẫn là logic cũ của 'handleSearch') ===
+  const executeFilter = useCallback(async () => {
+    // Nếu chọn "All", chỉ cần tải lại data overview gốc
+    if (statusFilter === 0) {
+      // Chỉ fetch data nếu không phải lần tải đầu tiên (để tránh 2 API call)
+      if (!isInitialMount.current) { 
+        await fetchData();
+      }
+      return;
+    }
+
+    // Nếu lọc (1, 2, hoặc 3), gọi API filter
+    console.log(`Filtering by status: ${statusFilter}`);
+    setLoading(true);
+    setError(null);
+    // Không hiển thị banner lỗi khi lọc, chỉ khi tải overview
+    // setShowErrorBanner(true); 
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/filter-status?status=${statusFilter}`, {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Filter API failed! status: ${response.status}`);
+      }
+
+      const filteredConversations = await response.json(); // API trả về List<Conversation>
+
+      // QUAN TRỌNG: Chỉ cập nhật 'conversations', giữ nguyên 'stats'
+      setOverviewData(prevData => ({
+        // Cẩn thận: nếu prevData là null (từ data giả), hãy lấy stats từ data giả
+        stats: prevData?.stats || getFakeData().stats, 
+        conversations: filteredConversations
+      }));
+
+    } catch (err) {
+      console.error("Failed to filter data:", err);
+      setError(err.message);
+      setShowErrorBanner(true); // Hiển thị lỗi nếu lọc thất bại
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, fetchData]); // Phụ thuộc vào statusFilter và fetchData
+
+
+  // === CẬP NHẬT: Sửa useEffect để TỰ ĐỘNG LỌC (Fix vòng lặp vô tận) ===
+  // Chạy 'executeFilter' mỗi khi 'statusFilter' thay đổi
+  useEffect(() => {
+    // CẬP NHẬT: Logic mới để ngăn vòng lặp vô tận
+    if (isInitialMount.current) {
+      // Bỏ qua lần chạy đầu tiên (vì fetchData() ở trên đã chạy)
+      isInitialMount.current = false;
+    } else {
+      // Chỉ chạy khi statusFilter thay đổi (SAU lần tải đầu tiên)
+      executeFilter();
+    }
+  }, [statusFilter, executeFilter]); // <-- Xóa 'overviewData' khỏi dependencies
+  // === HẾT CẬP NHẬT ===
+
+
   const handleConfirmAction = useCallback(async () => {
     const { type, data } = confirmationState;
     
     handleCloseConfirmation();
 
-    // === CẬP NHẬT: Kiểm tra lỗi trước khi gọi API ===
-    // Nếu đang ở chế độ fallback (có lỗi), không cho phép Analyze/Delete
-    if (error) {
+    if (error && !confirmationState.data.id.startsWith('fake_')) {
       alert("Cannot perform action: API connection failed. Please refresh.");
       return; 
     }
 
     if (type === 'analyze') {
       try {
+        setLoading(true); // Bật loading khi thực hiện action
         const response = await fetch(`${API_BASE_URL}/analyze/${data.id}`, {
           method: 'POST', 
           mode: 'cors', 
@@ -827,17 +905,19 @@ export default function App() {
           throw new Error(`Analyze API failed! status: ${response.status}`);
         }
         
-        await fetchData();
+        await fetchData(); // Tải lại toàn bộ data
         
       } catch (err) {
         console.error("Failed to analyze conversation:", err);
-        // Hiển thị lỗi cho người dùng
         setError(err.message);
         setShowErrorBanner(true);
+      } finally {
+        setLoading(false); // Tắt loading
       }
       
     } else if (type === 'delete') {
       try {
+        setLoading(true); // Bật loading khi thực hiện action
         const response = await fetch(`${API_BASE_URL}/delete/${data.id}`, {
           method: 'DELETE', 
           mode: 'cors'
@@ -847,38 +927,43 @@ export default function App() {
           throw new Error(`Delete API failed! status: ${response.status}`);
         }
 
-        await fetchData();
+        await fetchData(); // Tải lại toàn bộ data
 
       } catch (err) {
         console.error("Failed to delete conversation:", err);
         setError(err.message);
         setShowErrorBanner(true);
+      } finally {
+        setLoading(false); // Tắt loading
       }
     }
-  }, [confirmationState, fetchData, handleCloseConfirmation, error]); // Thêm 'error' vào dependency
+  }, [confirmationState, fetchData, handleCloseConfirmation, error]); 
 
   
-  if (loading) {
+  if (loading && !overviewData) { // Chỉ hiển thị loading toàn trang khi chưa có data
     return (
       <div className="min-h-screen bg-gray-100 p-8 flex justify-center items-center">
-        <p className="text-xl font-medium text-gray-700">Loading dashboard...</p>
+        {/* === CẬP NHẬT: Thêm lại biểu tượng Loading ... === */}
+        <div className="flex items-center text-blue-600 text-xl font-medium px-4 py-2 rounded-lg">
+          <svg className="animate-spin -ml-1 mr-3 h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Loading Dashboard...
+        </div>
       </div>
     );
   }
   
-  // === CẬP NHẬT: Xóa màn hình lỗi toàn trang ===
-  // if (error) { ... } // (ĐÃ BỊ XÓA)
-  
-  // Nếu không loading, VÀ VẪN không có data (lỗi nghiêm trọng)
   if (!overviewData || !overviewData.stats || !overviewData.conversations) {
      return (
       <div className="min-h-screen bg-gray-100 p-8 flex justify-center items-center">
         <p className="text-xl font-medium text-red-600">Failed to load any data.</p>
+        {error && <p className="text-sm text-gray-500 mt-2">{error}</p>}
       </div>
     );
   }
 
-  // === Chuẩn bị data (từ API thật hoặc data giả) ===
   const derivedStats = [
     { 
       id: 1, 
@@ -920,11 +1005,26 @@ export default function App() {
   // === RENDER GIAO DIỆN CHÍNH ===
   return (
     <div className="min-h-screen bg-gray-100 p-8 font-sans relative">
+      
+      {/* === CẬP NHẬT: Thêm lại biểu tượng Loading ... === */}
+      {/* Logic 'loading' này sẽ được bật/tắt bởi fetchData, executeFilter, và handleConfirmAction */}
+      {loading && (
+        <div className="fixed top-4 right-4 z-[100]">
+          <div className="flex items-center bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg">
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Loading...
+          </div>
+        </div>
+      )}
+      {/* === HẾT CẬP NHẬT === */}
+
       <h1 className="text-3xl font-bold text-gray-900 mb-8">
         Manage user conversation
       </h1>
       
-      {/* === CẬP NHẬT: Hiển thị thông báo lỗi (nếu có) === */}
       {error && showErrorBanner && (
         <ErrorBanner 
           message={error} 
@@ -932,7 +1032,6 @@ export default function App() {
         />
       )}
 
-      {/* Các khung sẽ hiển thị data (thật hoặc giả) */}
       <div className="space-y-6 mt-6">
         
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -952,8 +1051,14 @@ export default function App() {
           totalConversations={overviewData.stats.totalConversations}
         />
 
-        <ConversationsFilterTabs />
+        {/* === PHẦN LỌC VÀ TABS (ĐÃ CẬP NHẬT) === */}
+        <ConversationsFilterTabs 
+          currentFilterValue={statusFilter}
+          onFilterChange={setStatusFilter}
+          // onSearchClick đã bị xóa
+        />
 
+        {/* === PHẦN BẢNG HỘI THOẠI === */}
         <ConversationsTable 
           conversations={overviewData.conversations} 
           onViewClick={handleViewClick}
